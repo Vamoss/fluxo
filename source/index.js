@@ -11,17 +11,19 @@ import debugVS from './shaders/debug.vs';
 import debugFS from './shaders/debug.fs';
 import copyVS from './shaders/copy.vs';
 import copyFS from './shaders/copy.fs';
+import p5 from 'p5';
 
 // ——————————————————————————————————————————————————
 // Constants
 // ——————————————————————————————————————————————————
 
-const PARTICLE_COUNT = Math.pow(1024, 2);
+const PARTICLE_COUNT = Math.pow(2048, 2);
 const PARTICLE_COUNT_SQRT = Math.sqrt(PARTICLE_COUNT);
 const PARTICLE_DATA_SLOTS = 2;
 const PARTICLE_DATA_WIDTH = PARTICLE_COUNT_SQRT * PARTICLE_DATA_SLOTS;
 const PARTICLE_DATA_HEIGHT = PARTICLE_COUNT_SQRT;
-const PARTICLE_EMIT_RATE = 1000;
+const PARTICLE_EMIT_RATE = 10000;
+const DEBUG_SCALE = 1;
 
 // ——————————————————————————————————————————————————
 // Globals
@@ -37,31 +39,53 @@ let renderProgram;
 let debugProgram;
 let copyProgram;
 let frameBuffer;
-let container;
 let emitIndex;
-let lastEmit;
-let millis;
-let height;
-let width;
-let scale;
-let clock;
 let gl;
+
+window.p5 = p5;
+
+
+window.setup = function(){
+  createCanvas(windowWidth, windowHeight, WEBGL);
+
+  gl = drawingContext;
+  gl.getExtension('OES_texture_float');
+
+  emitIndex = 0;
+  leap();
+
+  physicsInputTexture = createPhysicsDataTexture();
+  physicsOutputTexture = createPhysicsDataTexture();
+  dataLocationBuffer = createDataLocationBuffer();
+  viewportQuadBuffer = createViewportQuadBuffer();
+  particleTexture = createParticleTexture();
+  physicsProgram = createPhysicsProgram();
+  renderProgram = createRenderProgram();
+  debugProgram = createDebugProgram();
+  copyProgram = createCopyProgram();
+  frameBuffer = createFramebuffer();  
+}
+
+window.draw = function(){
+  background(0, 0 , 0)
+  circle(mouseX, mouseY, 20);
+  
+  spawn();
+  physics();
+  copy();
+  render();
+  debug();
+}
+
+window.mouseMoved = () => {
+  var x = map(mouseX, 0, width, -1, 1);
+  var y = map(mouseY, 0, height, 1, -1);
+  emitParticles(PARTICLE_EMIT_RATE, [x, y, 0]);
+};
 
 // ——————————————————————————————————————————————————
 // GL Utils
 // ——————————————————————————————————————————————————
-
-const createContext = () => {
-  const el = document.createElement('canvas');
-  const gl = el.getContext('webgl') || el.getContext('experimental-webgl');
-  if (!gl) {
-    throw 'WebGL not supported';
-  }
-  if (!gl.getExtension('OES_texture_float')) {
-    throw 'Float textures not supported';
-  }
-  return gl;
-};
 
 const createShader = (source, type) => {
   const shader = gl.createShader(type);
@@ -121,12 +145,6 @@ const createFramebuffer = () => {
 // ——————————————————————————————————————————————————
 // Helpers
 // ——————————————————————————————————————————————————
-
-const random = (min, max) => {
-  if (typeof min !== 'number') min = 1;
-  if (typeof max !== 'number') max = min, min = 0;
-  return min + Math.random() * (max - min);
-};
 
 const createPhysicsProgram = () => {
   const program = createProgram(physicsVS, physicsFS);
@@ -213,15 +231,15 @@ const emitParticles = (count, origin, velocities = [0, 0, 0]) => {
     }
   };
   split(chunks[0]);
-  let i, j, n, m, chunk, data, force = 1.0;
+  let i, j, n, m, chunk, data, force = 0.6;
   for (i = 0, n = chunks.length; i < n; i++) {
     chunk = chunks[i];
     data = [];
     for (j = 0, m = chunk[2]; j < m; j++) {
       data.push(
-        origin[0] + random(-0.02, 0.02),
-        origin[1] + random(-0.02, 0.02),
-        origin[2] + random(-0.01, 0.01),
+        origin[0],
+        origin[1],
+        origin[2],
         random(10),
         velocities[0] + force * random(-1, 1),
         velocities[1] + force * random(-1, 1),
@@ -265,35 +283,6 @@ const leap = () => {
 // Main
 // ——————————————————————————————————————————————————
 
-const init = () => {
-  gl = createContext();
-  container = document.getElementById('container');
-  emitIndex = 0;
-  millis = 0;
-  clock = Date.now();
-  document.addEventListener('touchmove', touch);
-  document.addEventListener('mousemove', touch);
-  window.addEventListener('resize', resize);
-  container.appendChild(gl.canvas);
-  setup();
-  resize();
-  update();
-  leap();
-};
-
-const setup = () => {
-  physicsInputTexture = createPhysicsDataTexture();
-  physicsOutputTexture = createPhysicsDataTexture();
-  dataLocationBuffer = createDataLocationBuffer();
-  viewportQuadBuffer = createViewportQuadBuffer();
-  particleTexture = createParticleTexture();
-  physicsProgram = createPhysicsProgram();
-  renderProgram = createRenderProgram();
-  debugProgram = createDebugProgram();
-  copyProgram = createCopyProgram();
-  frameBuffer = createFramebuffer();
-};
-
 const physics = () => {
   gl.useProgram(physicsProgram);
   gl.viewport(0, 0, PARTICLE_DATA_WIDTH, PARTICLE_DATA_HEIGHT);
@@ -324,10 +313,10 @@ const copy = () => {
 };
 
 const debug = () => {
-  const x = 16 * scale;
-  const y = 16 * scale;
-  const w = 360 * scale;
-  const h = 180 * scale;
+  const x = 16 * DEBUG_SCALE;
+  const y = 16 * DEBUG_SCALE;
+  const w = 360 * DEBUG_SCALE;
+  const h = 180 * DEBUG_SCALE;
   gl.useProgram(debugProgram);
   gl.viewport(x, y, w, h);
   gl.bindBuffer(gl.ARRAY_BUFFER, viewportQuadBuffer);
@@ -359,58 +348,12 @@ const render = () => {
   gl.disable(gl.BLEND);
 };
 
-const tick = () => {
-  const now = Date.now();
-  millis += now - clock || 0;
-  clock = now;
-};
-
 const spawn = () => {
-  if (millis < 3000) {
+  if (millis() < 3000) {
     emitParticles(800, [
-      -1.0 + Math.sin(millis * 0.001) * 2.0,
-      -0.2 + Math.cos(millis * 0.004) * 0.5,
-      Math.sin(millis * 0.015) * -0.05
+      -1.0 + Math.sin(millis() * 0.001) * 2.0,
+      -0.2 + Math.cos(millis() * 0.004) * 0.5,
+      Math.sin(millis() * 0.015) * -0.05
     ]);
   }
 };
-
-const touch = (event) => {
-  if (millis - lastEmit < 20) return;
-  const touches = event.changedTouches || [event];
-  const limit = PARTICLE_EMIT_RATE / touches.length;
-  for (let i = 0; i < touches.length; i++) {
-    const touch = touches[i];
-    const x = (touch.clientX / width) * 2 - 1;
-    const y = (touch.clientY / height) * -2 + 1;
-    emitParticles(limit, [x, y, 0]);
-  }
-  lastEmit = millis;
-};
-
-const resize = () => {
-  scale = window.devicePixelRatio || 1;
-  width = window.innerWidth;
-  height = window.innerHeight;
-  gl.canvas.width = width * scale;
-  gl.canvas.height = height * scale;
-  gl.canvas.style.width = width + 'px';
-  gl.canvas.style.height = height + 'px';
-};
-
-const update = () => {
-  requestAnimationFrame(update);
-  tick();
-  spawn();
-  physics();
-  copy();
-  render();
-  debug();
-};
-
-// ——————————————————————————————————————————————————
-// Bootstrap
-// ——————————————————————————————————————————————————
-
-if (document.readyState === 'complete') init()
-else window.addEventListener('load', init);
