@@ -4,7 +4,7 @@
   "description": "WebGL GPU Particles",
   "main": "index.js",
   "scripts": {
-    "clean": "rm -rf dist",
+    "clean": "rm -rf docs",
     "build": "npm run clean && npx webpack --mode=production",
     "start": "npx webpack serve --hot --port 3000 --mode=development"
   },

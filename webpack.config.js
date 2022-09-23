@@ -1,6 +1,6 @@
 var HtmlWebpackPlugin = require('html-webpack-plugin');
 var config = {
-  context: __dirname + '/source',
+  context: __dirname + '/src',
   entry: {
     main: './index.js'
   },
@@ -8,7 +8,7 @@ var config = {
     hot: true,
   },
   output: {
-    path: __dirname + '/dist',
+    path: __dirname + '/docs',
     filename: '[name]-[hash:6].js',
     assetModuleFilename: '[name]-[hash:6][ext]'
   },
